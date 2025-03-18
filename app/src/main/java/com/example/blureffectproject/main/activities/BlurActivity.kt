@@ -294,7 +294,6 @@ class BlurActivity : AppCompatActivity() {
 
     }
 
-
     private fun updateButtonStates(eraserSelected: Boolean = false, blurPaintSelected: Boolean = false) {
         binding.eraser.setImageResource(if (eraserSelected) R.drawable.eraser_selected else R.drawable.eraser)
         binding.eraser.setBackgroundResource(if (eraserSelected) R.drawable.buttons_background_selected else R.drawable.buttons_background)
@@ -311,10 +310,7 @@ class BlurActivity : AppCompatActivity() {
     }
 
     @RequiresApi(Build.VERSION_CODES.S)
-    private fun processImageWithSegmentation(
-        originalBitmap: Bitmap,
-        targetImageView: ImageView, blurType: BlurType, motionAngle: Float = 10f, motionDistancePerPass: Float = 10f, radialZoomAmount: Float = 0.1f, radialPasses: Int = 10
-    ) {
+    private fun processImageWithSegmentation(originalBitmap: Bitmap, targetImageView: ImageView, blurType: BlurType, motionAngle: Float = 10f, motionDistancePerPass: Float = 10f, radialZoomAmount: Float = 0.1f, radialPasses: Int = 10) {
 
         val width = originalBitmap.width
         val height = originalBitmap.height
@@ -505,7 +501,6 @@ class BlurActivity : AppCompatActivity() {
             if (!isBlurPaintActive) {
                 return@setOnTouchListener false
             }
-
             val bitmapPoint = getBitmapCoordinates(binding.blurImageView, motionEvent)
 
             if (bitmapPoint != null) {
@@ -531,10 +526,8 @@ class BlurActivity : AppCompatActivity() {
                     }
                 }
             }
-
             true
         }
-
     }
 
     private fun drawSmoothLine(startX: Float, startY: Float, endX: Float, endY: Float) {
@@ -552,7 +545,6 @@ class BlurActivity : AppCompatActivity() {
     private fun lerp(a: Float, b: Float, t: Float): Float {
         return a + (b - a) * t
     }
-
 
     private fun applyBlurAtPoint(x: Int, y: Int) {
         val radius = 20f // increased radius for smoother edges
@@ -609,7 +601,6 @@ class BlurActivity : AppCompatActivity() {
 
         binding.blurImageView.setImageBitmap(mutableBlurredBitmap)
     }
-
 
     private fun disableTouch() {
         binding.blurImageView.setOnTouchListener(null)

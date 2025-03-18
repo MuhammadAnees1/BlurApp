@@ -81,7 +81,6 @@ object BlurUtils {
         return outputBitmap
     }
 
-
     fun applyMotionBlur(bitmap: Bitmap, blurPasses: Int, angleInDegrees: Float, distancePerPass: Float): Bitmap {
         val radians = Math.toRadians(angleInDegrees.toDouble())
         val offsetX = (Math.cos(radians) * distancePerPass).toFloat()

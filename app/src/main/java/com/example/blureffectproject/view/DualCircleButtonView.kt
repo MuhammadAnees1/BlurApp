@@ -250,7 +250,6 @@ class DualCircleButtonView @JvmOverloads constructor(
                         } else {
                             innerRotationAngle -= distanceBetweenFingers * rotationSensitivity
                         }
-
                         invalidate()
                     }
 
@@ -347,10 +346,8 @@ class DualCircleButtonView @JvmOverloads constructor(
         handler.removeCallbacks(hideRunnable)
         invalidate()
     }
-
     private fun startHideTimer(delayMillis: Long = 1000) {
         handler.removeCallbacks(hideRunnable)
         handler.postDelayed(hideRunnable, delayMillis)
     }
-
 }
