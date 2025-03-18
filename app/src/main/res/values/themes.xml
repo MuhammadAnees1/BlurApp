@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.BlurEffectProject" parent="Theme.AppCompat.Light.NoActionBar" />
+
+    <style name="headingText">
+        <item name="android:textColor">@color/btn_txt_clr</item>
+    </style>
+
+</resources>
