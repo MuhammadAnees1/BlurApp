@@ -73,6 +73,8 @@
         </RelativeLayout>
     </FrameLayout>
 
+
+
     <FrameLayout
         android:id="@+id/BlurViewLayout"
         android:layout_width="match_parent"
@@ -86,6 +88,8 @@
             android:id="@+id/blurContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
+
+
 
             <ImageView
                 android:id="@+id/blurImageView"
@@ -102,9 +106,17 @@
                 android:visibility="gone"
                 app:layout_constraintTop_toTopOf="@+id/blurImageView"
                 app:layout_constraintBottom_toBottomOf="@+id/blurImageView"
-
                 />
 
+            <ProgressBar
+                android:id="@+id/progressBar"
+                style="?android:attr/progressBarStyleLarge"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:indeterminate="true"
+                android:layout_gravity="center"
+                android:visibility="gone"
+            android:progressTint="@color/light_white" />
         </FrameLayout>
 
         <ImageView

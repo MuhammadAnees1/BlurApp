@@ -13,9 +13,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
-import android.graphics.RadialGradient
 import android.graphics.RectF
-import android.graphics.Region
 import android.graphics.Shader
 import android.os.Handler
 import android.os.Looper
@@ -52,9 +50,6 @@ class LinerButtonView @JvmOverloads constructor(
 
     private var blurredBitmap: Bitmap? = null
     private var bitmapShader: BitmapShader? = null
-    private val shaderMatrix = Matrix()
-
-    private var rotationAngle = 0f
     private var lastRotation = 0f
     private var initialRotation = 0f
 
@@ -64,15 +59,11 @@ class LinerButtonView @JvmOverloads constructor(
     private var lastDistance = 0f
 
     // Frame control
-    private var frameOffsetX = 0f
-    private var frameOffsetY = 0f
     private var lastTouchX = 0f
     private var lastTouchY = 0f
 
     private var isDraggingFrame = false
     private var isRotating = false
-
-    private var bottomLineOffsetX = 0f
 
     private var translationX = 0f
     private var translationY = 0f
@@ -91,13 +82,6 @@ class LinerButtonView @JvmOverloads constructor(
     init {
         // Start hiding lines after 2 seconds initially
         startHideLinesTimer()
-    }
-
-    fun setBlurredBitmap(bitmap: Bitmap) {
-        blurredBitmap = bitmap
-        bitmapShader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-        blurPaint.shader = bitmapShader
-        invalidate()
     }
 
     fun setImageBitmap(bitmap: Bitmap) {
@@ -185,11 +169,20 @@ class LinerButtonView @JvmOverloads constructor(
         originalBitmap?.let { original ->
             blurredBitmap?.let { blurred ->
 
-                val scaleX = width.toFloat() / original.width
-                val scaleY = height.toFloat() / original.height
+                val viewWidth = width.toFloat()
+                val viewHeight = height.toFloat()
 
-                val centerX = width / 2f
-                val centerY = height / 2f
+                val bitmapWidth = original.width.toFloat()
+                val bitmapHeight = original.height.toFloat()
+
+                // Maintain aspect ratio by taking the smaller scale
+                val scale = minOf(viewWidth / bitmapWidth, viewHeight / bitmapHeight)
+
+                val dx = (viewWidth - bitmapWidth * scale) / 2f
+                val dy = (viewHeight - bitmapHeight * scale) / 2f
+
+                val centerX = viewWidth / 2f
+                val centerY = viewHeight / 2f
 
                 val halfGap = 200f / scaleFactor
                 val topY = centerY - halfGap
@@ -199,15 +192,19 @@ class LinerButtonView @JvmOverloads constructor(
                 val secondTopY = topY - extraGap
                 val secondBottomY = bottomY + extraGap
 
+                // Draw original bitmap scaled and centered
                 val originalMatrix = Matrix().apply {
-                    setScale(scaleX, scaleY)
+                    setScale(scale, scale)
+                    postTranslate(dx, dy)
                 }
                 canvas.drawBitmap(original, originalMatrix, null)
 
-                val saveLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
+                val saveLayer = canvas.saveLayer(0f, 0f, viewWidth, viewHeight, null)
 
+                // Draw blurred bitmap scaled and centered
                 val blurMatrix = Matrix().apply {
-                    setScale(scaleX, scaleY)
+                    setScale(scale, scale)
+                    postTranslate(dx, dy)
                 }
                 canvas.drawBitmap(blurred, blurMatrix, blurPaint)
 
@@ -246,10 +243,10 @@ class LinerButtonView @JvmOverloads constructor(
                 val topShadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     shader = LinearGradient(
                         0f, secondTopY, 0f, topY,
-                        Color.BLACK, Color.TRANSPARENT, // Dark to transparent
+                        Color.BLACK, Color.TRANSPARENT,
                         Shader.TileMode.CLAMP
                     ).apply {
-                        setLocalMatrix(shaderMatrix) // Apply transformations
+                        setLocalMatrix(shaderMatrix)
                     }
                     xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
                 }
@@ -259,10 +256,10 @@ class LinerButtonView @JvmOverloads constructor(
                 val bottomShadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     shader = LinearGradient(
                         0f, bottomY, 0f, secondBottomY,
-                        Color.TRANSPARENT, Color.BLACK, // Transparent to dark
+                        Color.TRANSPARENT, Color.BLACK,
                         Shader.TileMode.CLAMP
                     ).apply {
-                        setLocalMatrix(shaderMatrix) // Apply transformations
+                        setLocalMatrix(shaderMatrix)
                     }
                     xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
                 }

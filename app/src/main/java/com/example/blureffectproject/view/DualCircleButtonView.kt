@@ -9,10 +9,13 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
+import android.graphics.RadialGradient
 import android.graphics.RectF
+import android.graphics.Shader
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import com.example.blureffectproject.utils.BlurUtils
@@ -61,6 +64,7 @@ class DualCircleButtonView @JvmOverloads constructor(
 
     private var showCircle = true
     private var isDragging = false
+    private var toggleBlur = false
 
     // Handler to manage the delayed hide
     private val handler = Handler(Looper.getMainLooper())
@@ -69,14 +73,6 @@ class DualCircleButtonView @JvmOverloads constructor(
         invalidate()
     }
 
-    private val rotationRunnable = object : Runnable {
-        override fun run() {
-            outerRotationAngle = (outerRotationAngle + outerRotationSpeed) % 360
-            innerRotationAngle = (innerRotationAngle + innerRotationSpeed) % 360
-            invalidate()
-            postDelayed(this, frameRate)
-        }
-    }
 
     private var originalBitmap: Bitmap? = null
     private var blurredBitmap: Bitmap? = null
@@ -86,23 +82,16 @@ class DualCircleButtonView @JvmOverloads constructor(
         showCircleIndefinitely()
     }
 
-    private fun showCircleTemporarily() {
-        showCircle = true
-        invalidate()
-
-        // Clear previous hide tasks
-        handler.removeCallbacks(hideRunnable)
-
-        // Post delayed hide after 1 seconds
-        handler.postDelayed(hideRunnable, 1000)
-    }
-
     fun setBitmap(bitmap: Bitmap) {
         originalBitmap = bitmap
         blurredBitmap = BlurUtils.blurBitmap(context, bitmap, 20f)
 
-        centerX = width / 2f
-        centerY = height / 2f
+        post {
+            centerX = width / 2f
+            centerY = height / 2f
+            invalidate()
+        }
+
 
         invalidate()
     }
@@ -110,14 +99,21 @@ class DualCircleButtonView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Always draw the blur effect with the clear hole
         originalBitmap?.let { original ->
             blurredBitmap?.let { blurred ->
-                drawBlurEffect(canvas, original, blurred)
+                if (toggleBlur) {
+                    Log.d("TAG", "onDraw123456: "+toggleBlur)
+                    drawInnerCircleBlurEffect(canvas, original, blurred)
+                } else {
+                    Log.d("TAG", "onDraw123: "+toggleBlur)
+
+                    drawBlurEffect(canvas, original, blurred)
+                }
             }
         }
-        // Draw the circles ONLY if showCircle is true
+
         if (showCircle) {
+            // Draw the rotating circles
             canvas.save()
             canvas.translate(centerX, centerY)
 
@@ -133,6 +129,59 @@ class DualCircleButtonView @JvmOverloads constructor(
 
             canvas.restore()
         }
+    }
+
+    private fun drawInnerCircleBlurEffect(canvas: Canvas, original: Bitmap, blurred: Bitmap) {
+        val saveLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
+
+        val destRect = calculateCenteredRectF(original)
+
+        // Draw original image as background
+        canvas.drawBitmap(original, null, destRect, null)
+
+        val scaledInnerRadius = innerRadius * innerScaleFactor
+        val scaledOuterRadius = outerRadius * outerScaleFactor
+
+        // Clip to outer circle (where blur will be applied)
+        val blurPath = Path().apply {
+            addCircle(centerX, centerY, scaledOuterRadius, Path.Direction.CCW)
+        }
+
+        canvas.save()
+        canvas.clipPath(blurPath)
+
+        // Draw blurred image over the area
+        canvas.drawBitmap(blurred, null, destRect, null)
+
+        // Create gradient mask (transparent on outer edge)
+        val gradient = RadialGradient(
+            centerX,
+            centerY,
+            scaledOuterRadius,
+            intArrayOf(
+                Color.BLACK,       // Fully visible in center
+                Color.TRANSPARENT  // Fully transparent at outer radius
+            ),
+            floatArrayOf(
+                scaledInnerRadius / scaledOuterRadius, // Start fading after inner radius
+                1f                                     // End fading at outer radius
+            ),
+            Shader.TileMode.CLAMP
+        )
+
+        // Paint to apply mask using DST_IN blending mode
+        val gradientMaskPaint = Paint().apply {
+            isAntiAlias = true
+            shader = gradient
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+        }
+
+        // Draw gradient mask to fade edges
+        canvas.drawCircle(centerX, centerY, scaledOuterRadius, gradientMaskPaint)
+
+        canvas.restore()
+
+        canvas.restoreToCount(saveLayer)
     }
 
     private fun drawBlurEffect(canvas: Canvas, original: Bitmap, blurred: Bitmap) {
@@ -171,7 +220,7 @@ class DualCircleButtonView @JvmOverloads constructor(
         canvas.save()
         canvas.clipPath(clipPath)
 
-        canvas.drawBitmap(original, null, destRect, null)
+//        canvas.drawBitmap(original, null, destRect, null)
 
         canvas.restore()
 
@@ -180,6 +229,7 @@ class DualCircleButtonView @JvmOverloads constructor(
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
+
             MotionEvent.ACTION_DOWN -> {
                 val touchX = event.x
                 val touchY = event.y
@@ -187,6 +237,15 @@ class DualCircleButtonView @JvmOverloads constructor(
 
                 showCircleIndefinitely()
 
+                // 👉 Check if tap is inside the INNER circle
+                if (distanceToCenter <= innerRadius * innerScaleFactor) {
+                    toggleBlur = !toggleBlur // Toggle blur mode!
+                    invalidate()
+                    Log.d("DualCircleButtonView", "toggleBlur: $toggleBlur")
+                    return true // Return here, so it doesn't start dragging
+                }
+
+                // 👉 Otherwise, check for OUTER circle to enable dragging
                 if (distanceToCenter <= outerRadius * outerScaleFactor) {
                     isDragging = true
                     lastTouchX = touchX
@@ -291,6 +350,7 @@ class DualCircleButtonView @JvmOverloads constructor(
                 isDragging = false
                 activePointerId = MotionEvent.INVALID_POINTER_ID
                 initialDistance = 0f
+                Log.d("DualCircleButtonView", "Outer Circle Size: ${outerRadius * outerScaleFactor}, Inner Circle Size: ${innerRadius * innerScaleFactor}")
 
                 // Start the hide countdown AFTER the user lifts their fingers
                 startHideTimer()
@@ -346,8 +406,15 @@ class DualCircleButtonView @JvmOverloads constructor(
         handler.removeCallbacks(hideRunnable)
         invalidate()
     }
+
     private fun startHideTimer(delayMillis: Long = 1000) {
         handler.removeCallbacks(hideRunnable)
         handler.postDelayed(hideRunnable, delayMillis)
+    }
+
+    fun setBlurMode(isBlur: Boolean) {
+        toggleBlur = isBlur
+        invalidate()
+        Log.d("TAG", "setBlurMode: $toggleBlur")
     }
 }

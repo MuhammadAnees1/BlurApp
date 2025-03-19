@@ -1,9 +1,15 @@
 package com.example.blureffectproject.utils
 
 import android.content.Context
-import android.graphics.*
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Matrix
+import android.graphics.Paint
 import android.os.Build
-import android.renderscript.*
+import android.renderscript.Allocation
+import android.renderscript.Element
+import android.renderscript.RenderScript
+import android.renderscript.ScriptIntrinsicBlur
 import androidx.annotation.RequiresApi
 import androidx.core.graphics.createBitmap
 
@@ -69,7 +75,8 @@ object BlurUtils {
         return outputBitmap
     }
 
-    fun applyMotionBlur(context: Context, bitmap: Bitmap, blurPasses: Int, angleInDegrees: Float, distancePerPass: Float): Bitmap {
+    fun applyMotionBlur(context: Context, bitmap: Bitmap, blurPasses: Float, angleInDegrees: Float, distancePerPass: Float): Bitmap {
+
         val radians = Math.toRadians(angleInDegrees.toDouble())
         val offsetX = (Math.cos(radians) * distancePerPass).toFloat()
         val offsetY = (Math.sin(radians) * distancePerPass).toFloat()
@@ -83,8 +90,8 @@ object BlurUtils {
         }
 
 
-        for (i in 1..blurPasses) {
-            val alpha = ((255 / blurPasses.toFloat()) * 0.8).toInt().coerceIn(0, 255)  // Smooth fading
+        for (i in 1..blurPasses.toInt()) {
+            val alpha = ((255 / blurPasses) * 0.8).toInt().coerceIn(0, 255)  // Smooth fading
             paint.alpha = alpha
 
             val dx = offsetX * i
