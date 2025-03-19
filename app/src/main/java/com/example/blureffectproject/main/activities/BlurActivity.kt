@@ -204,11 +204,11 @@ class BlurActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-//            originalBitmap?.let {
-//                processImageWithSegmentation(it, binding.blurImageView, currentBlurType!!)
-//            } ?: run {
-//                Toast.makeText(this@BlurActivity, "No image loaded!", Toast.LENGTH_SHORT).show()
-//            }
+            originalBitmap?.let {
+                processImageWithSegmentation(it, binding.blurImageView, currentBlurType!!)
+            } ?: run {
+                Toast.makeText(this@BlurActivity, "No image loaded!", Toast.LENGTH_SHORT).show()
+            }
         }
 
 
@@ -243,8 +243,8 @@ class BlurActivity : AppCompatActivity() {
             }
         }
 
-        binding.blurSeekBar.max = 100
-        binding.blurSeekBar.progress = 20
+        binding.blurSeekBar.max = 40
+        binding.blurSeekBar.progress = 5
         binding.blurSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
 
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -254,10 +254,10 @@ class BlurActivity : AppCompatActivity() {
                     return
                 }
                 // Display SeekBar value as 0% to 100%
-                binding.blurValueText.text = "$progress%"
+                binding.blurValueText.text = "${(progress * 100 / 20)}%" // Converts 0-20 → 0%-100%
 
                 // Convert 0-100% to a brush size of 0-30 (0 means no blur)
-                val blurProgress = (progress / 100f) * 50  // Maps 0% → 0 and 100% → 30
+                val blurProgress = (progress / 100f) * 20  // Maps 0% → 0 and 100% → 30
 
                 originalBitmap?.copy(Bitmap.Config.ARGB_8888, true)?.let { bitmap ->
                     when (currentBlurType) {
@@ -291,6 +291,7 @@ class BlurActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
         binding.motionAngleSeekbar.max = 360
+
         binding.motionAngleSeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             @RequiresApi(Build.VERSION_CODES.S)
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -302,7 +303,8 @@ class BlurActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
 
-
+        binding.motionBlurSeekBar.max = 40
+        binding.motionBlurSeekBar.progress = 5
         binding.motionBlurSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (currentBlurType == null) {

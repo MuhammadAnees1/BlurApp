@@ -58,9 +58,6 @@ class DualCircleButtonView @JvmOverloads constructor(
     private var initialDistance = 0f
 
     private val rotationSensitivity = 0.5f
-    private val outerRotationSpeed = 0.5f
-    private val innerRotationSpeed = -0.5f
-    private val frameRate = 16L
 
     private var showCircle = true
     private var isDragging = false
@@ -101,7 +98,7 @@ class DualCircleButtonView @JvmOverloads constructor(
 
         originalBitmap?.let { original ->
             blurredBitmap?.let { blurred ->
-                if (toggleBlur) {
+                if (!toggleBlur) {
                     Log.d("TAG", "onDraw123456: "+toggleBlur)
                     drawInnerCircleBlurEffect(canvas, original, blurred)
                 } else {
@@ -356,7 +353,6 @@ class DualCircleButtonView @JvmOverloads constructor(
                 startHideTimer()
             }
         }
-
         return true
     }
 
