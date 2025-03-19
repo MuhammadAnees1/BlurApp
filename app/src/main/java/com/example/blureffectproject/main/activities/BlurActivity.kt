@@ -242,12 +242,11 @@ class BlurActivity : AppCompatActivity() {
                     Toast.makeText(this@BlurActivity, "Select a blur type first", Toast.LENGTH_SHORT).show()
                     return
                 }
-
                 // Display SeekBar value as 0% to 100%
                 binding.blurValueText.text = "$progress%"
 
-                // Directly use the SeekBar progress for blur intensity (0 to 100%)
-                val blurProgress = progress.toFloat()
+                // Convert 0-100% to a brush size of 0-30 (0 means no blur)
+                val blurProgress = (progress / 100f) * 50  // Maps 0% → 0 and 100% → 30
 
                 originalBitmap?.copy(Bitmap.Config.ARGB_8888, true)?.let { bitmap ->
                     when (currentBlurType) {
@@ -501,7 +500,7 @@ class BlurActivity : AppCompatActivity() {
                     }
 
                     MotionEvent.ACTION_UP -> {
-                        eraseBlurAtPoint(x.toInt(), y.toInt(), isFinalUpdate = true) // Final update
+                        eraseBlurAtPoint(x.toInt(), y.toInt(), isFinalUpdate = true)
                         lastEraserX = -1f
                         lastEraserY = -1f
                     }
@@ -529,7 +528,7 @@ class BlurActivity : AppCompatActivity() {
 
 
     private fun eraseBlurAtPoint(x: Int, y: Int,isFinalUpdate: Boolean) {
-        val radius = 20
+        val radius = 40
 
         val left = (x - radius).coerceAtLeast(0)
         val top = (y - radius).coerceAtLeast(0)
