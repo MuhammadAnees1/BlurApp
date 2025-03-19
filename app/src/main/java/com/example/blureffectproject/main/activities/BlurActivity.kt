@@ -41,7 +41,6 @@ class BlurActivity : AppCompatActivity() {
     private lateinit var blurAdapter: BlurAdapter
     private var isEraserSelected = false
     private var isBlurOnFace = false
-    private var blurRadius: Float = 10f
     private lateinit var segmenter: Segmenter
     private var originalBitmap: Bitmap? = null
     private var isEraserActive = false
@@ -53,7 +52,6 @@ class BlurActivity : AppCompatActivity() {
     private var currentBlurType: BlurType? = null
     private var lastX = -1f
     private var lastY = -1f
-    private val THRESHOLD_DISTANCE = 50f // you can adjust this
 
 
     @SuppressLint("ClickableViewAccessibility")
@@ -81,13 +79,22 @@ class BlurActivity : AppCompatActivity() {
             BlurModel(R.drawable.bg6, "Zoom"),
         )
 
+        // Store last selected blur effect
+        var lastSelectedBlurId: Int? = null
+
         blurAdapter = BlurAdapter(this, buttonList) { imageResId ->
+
+            if (lastSelectedBlurId == imageResId) {
+                Log.d("BlurEffect", "Effect already applied for: $imageResId")
+                return@BlurAdapter
+            }
 
             binding.BlurMotionLinearLayout.visibility = View.GONE
             binding.blurLinearLayout.visibility = View.VISIBLE
             binding.dualCircleButton.visibility = View.GONE
             binding.eraser.visibility = View.VISIBLE
             binding.blurPaintButton.visibility = View.VISIBLE
+            binding.blurSeekBar.progress = 20
 
             // Clean up old views
             for (i in binding.blurContainer.childCount - 1 downTo 0) {
@@ -97,20 +104,17 @@ class BlurActivity : AppCompatActivity() {
                 }
             }
 
-            val myImageView = binding.blurImageView
-            val drawable = myImageView.drawable as? BitmapDrawable
-            drawable?.let {
-                val bitmap = it.bitmap
+            originalBitmap?.let { bitmap ->  // Use originalBitmap instead of getting it from blurImageView
+
                 when (imageResId) {
                     R.drawable.bg1 -> {
                         currentBlurType = BlurType.NORMAL
-                        processImageWithSegmentation(bitmap, myImageView, BlurType.NORMAL)
+                        processImageWithSegmentation(bitmap, binding.blurImageView, BlurType.NORMAL)
                     }
                     R.drawable.bg2 -> {
                         val button = DualCircleButtonView(this)
                         binding.blurContainer.addView(button)
                         button.setBitmap(bitmap)
-
                         binding.eraser.visibility = View.GONE
                         binding.blurPaintButton.visibility = View.GONE
                     }
@@ -118,32 +122,31 @@ class BlurActivity : AppCompatActivity() {
                         val button = LinerButtonView(this)
                         binding.blurContainer.addView(button)
                         button.setImageBitmap(bitmap)
-
                         binding.eraser.visibility = View.GONE
                         binding.blurPaintButton.visibility = View.GONE
                     }
                     R.drawable.bg4 -> {
                         currentBlurType = BlurType.RADIAL
-                        processImageWithSegmentation(bitmap, myImageView, BlurType.RADIAL)
+                        processImageWithSegmentation(bitmap, binding.blurImageView, BlurType.RADIAL)
                     }
                     R.drawable.bg5 -> {
                         currentBlurType = BlurType.MOTION
-                        processImageWithSegmentation(bitmap, myImageView, BlurType.MOTION)
+                        processImageWithSegmentation(bitmap, binding.blurImageView, BlurType.MOTION)
                         binding.BlurMotionLinearLayout.visibility = View.VISIBLE
                         binding.blurLinearLayout.visibility = View.GONE
                     }
                     R.drawable.bg6 -> {
                         currentBlurType = BlurType.ZOOM
-                        processImageWithSegmentation(bitmap, myImageView, BlurType.ZOOM)
+                        processImageWithSegmentation(bitmap, binding.blurImageView, BlurType.ZOOM)
                     }
                     else -> {
                         currentBlurType = null
                         Toast.makeText(this, "No blur type found for this button", Toast.LENGTH_SHORT).show()
                     }
                 }
-            } ?:
 
-            Log.e("BlurEffect", "Drawable is not a BitmapDrawable!")
+                lastSelectedBlurId = imageResId
+            } ?: Log.e("BlurEffect", "Original bitmap is null!")
         }
 
         binding.blurRecycleView.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
@@ -212,47 +215,56 @@ class BlurActivity : AppCompatActivity() {
         binding.imagePreview.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    originalBitmap?.let { binding.blurImageView.setImageBitmap(it) }
+                    // Show the original unblurred image temporarily
+                    originalBitmapCopy?.let { binding.blurImageView.setImageBitmap(it) }
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    originalBitmap?.let { processImageWithSegmentation(it, binding.blurImageView, BlurType.RADIAL) }
+                    // Restore the last modified blurred image
+                    mutableBlurredBitmap?.let {
+                        binding.blurImageView.setImageBitmap(it)
+                    } ?: originalBitmapCopy?.let { binding.blurImageView.setImageBitmap(it) }
+
                     true
                 }
                 else -> false
             }
         }
 
+
         binding.blurSeekBar.max = 100
-        binding.blurSeekBar.progress = 50
+        binding.blurSeekBar.progress = 20
         binding.blurSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
 
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-
 
                 if (currentBlurType == null) {
                     Toast.makeText(this@BlurActivity, "Select a blur type first", Toast.LENGTH_SHORT).show()
                     return
                 }
+
                 // Display SeekBar value as 0% to 100%
                 binding.blurValueText.text = "$progress%"
 
-                // Convert 0-100% to a brush size of 10-30
-                val blurProgress = 10 + (progress / 100f) * 20  // Maps 0% → 10 and 100% → 30
+                // Directly use the SeekBar progress for blur intensity (0 to 100%)
+                val blurProgress = progress.toFloat()
 
-                (binding.blurImageView.drawable as? BitmapDrawable)?.bitmap?.let { bitmap ->
+                originalBitmap?.copy(Bitmap.Config.ARGB_8888, true)?.let { bitmap ->
                     when (currentBlurType) {
-                        BlurType.RADIAL -> processImageWithSegmentation(bitmap, binding.blurImageView, BlurType.RADIAL, radialZoomAmount = blurProgress / 1000f, radialPasses = 15)
-                        BlurType.ZOOM -> processImageWithSegmentation(bitmap, binding.blurImageView, BlurType.ZOOM, radialZoomAmount = blurProgress / 1000f, radialPasses = 10)
+                        BlurType.RADIAL -> processImageWithSegmentation(bitmap, binding.blurImageView, BlurType.RADIAL, radialZoomAmount = blurProgress / 100f, radialPasses = 15)
+                        BlurType.ZOOM -> processImageWithSegmentation(bitmap, binding.blurImageView, BlurType.ZOOM, radialZoomAmount = blurProgress / 100f, radialPasses = 10)
                         BlurType.NORMAL -> processImageWithSegmentation(bitmap, binding.blurImageView, BlurType.NORMAL)
                         else -> Toast.makeText(this@BlurActivity, "Unsupported blur type!", Toast.LENGTH_SHORT).show()
                     }
                 } ?: Log.e("BlurEffect", "No valid image loaded")
+
+                binding.blurImageView.invalidate() // Force UI refresh
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
+
         binding.motionBlurSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (currentBlurType == null) {
@@ -310,15 +322,21 @@ class BlurActivity : AppCompatActivity() {
     }
 
     @RequiresApi(Build.VERSION_CODES.S)
-    private fun processImageWithSegmentation(originalBitmap: Bitmap, targetImageView: ImageView, blurType: BlurType, motionAngle: Float = 10f, motionDistancePerPass: Float = 10f, radialZoomAmount: Float = 0.1f, radialPasses: Int = 10) {
-
+    private fun processImageWithSegmentation(
+        originalBitmap: Bitmap,
+        targetImageView: ImageView,
+        blurType: BlurType,
+        motionAngle: Float = 10f,
+        motionDistancePerPass: Float = 10f,
+        radialZoomAmount: Float = 0.1f,
+        radialPasses: Int = 10
+    ) {
         val width = originalBitmap.width
         val height = originalBitmap.height
         val inputImage = InputImage.fromBitmap(originalBitmap, 0)
 
         segmenter.process(inputImage)
             .addOnSuccessListener { segmentationResult ->
-
                 try {
                     val maskBuffer = segmentationResult.buffer
                     val maskWidth = segmentationResult.width
@@ -344,15 +362,16 @@ class BlurActivity : AppCompatActivity() {
                     val scaledMask = Bitmap.createScaledBitmap(maskBitmap, width, height, true)
 
                     val blurredBackground = when (blurType) {
-                        BlurType.RADIAL -> BlurUtils.applyRadialZoomBlur(
+                        BlurType.RADIAL -> BlurUtils.applyRadialBlur(
                             context = this,
                             originalBitmap,
                             width / 2f,
                             height / 2f,
-                             radialZoomAmount, radialPasses
+                            radialZoomAmount, radialPasses
                         )
 
                         BlurType.MOTION -> BlurUtils.applyMotionBlur(
+                            context = this,
                             originalBitmap,
                             blurPasses = 10,
                             angleInDegrees = motionAngle,
@@ -360,6 +379,7 @@ class BlurActivity : AppCompatActivity() {
                         )
 
                         BlurType.ZOOM -> BlurUtils.createZoomBlur(
+                            context = this,
                             originalBitmap,
                             width / 2f,
                             height / 2f,
@@ -371,11 +391,13 @@ class BlurActivity : AppCompatActivity() {
                     }
 
                     val compositedBitmap = compositeBitmaps(originalBitmap, blurredBackground, scaledMask)
+
+                    // 🔹 Ensure latest blur effect is saved
                     mutableBlurredBitmap = compositedBitmap.copy(Bitmap.Config.ARGB_8888, true)
 
                     targetImageView.setImageBitmap(mutableBlurredBitmap)
 
-                    // 4. Update the currentBlurType after successful processing
+                    // 🔹 Store the current blur type for future reference
                     currentBlurType = blurType
 
                 } catch (e: Exception) {
@@ -445,7 +467,10 @@ class BlurActivity : AppCompatActivity() {
         }
 
         return PointF(x, y)
+
     }
+    private var lastEraserX = -1f
+    private var lastEraserY = -1f
 
     @SuppressLint("ClickableViewAccessibility")
     private fun enableEraserTouch() {
@@ -457,15 +482,28 @@ class BlurActivity : AppCompatActivity() {
             val bitmapPoint = getBitmapCoordinates(binding.blurImageView, motionEvent)
 
             if (bitmapPoint != null) {
-                val x = bitmapPoint.x.toInt()
-                val y = bitmapPoint.y.toInt()
+                val x = bitmapPoint.x
+                val y = bitmapPoint.y
 
                 when (motionEvent.action) {
-                    MotionEvent.ACTION_DOWN,
-                    MotionEvent.ACTION_MOVE -> {
-                        eraseBlurAtPoint(x, y)
+                    MotionEvent.ACTION_DOWN -> {
+                        lastEraserX = x
+                        lastEraserY = y
+                        eraseBlurAtPoint(x.toInt(), y.toInt(), isFinalUpdate = false)
                     }
+
+                    MotionEvent.ACTION_MOVE -> {
+                        if (Math.hypot((x - lastEraserX).toDouble(), (y - lastEraserY).toDouble()) > 5) {
+                            drawSmoothEraserPath(lastEraserX, lastEraserY, x, y)
+                            lastEraserX = x
+                            lastEraserY = y
+                        }
+                    }
+
                     MotionEvent.ACTION_UP -> {
+                        eraseBlurAtPoint(x.toInt(), y.toInt(), isFinalUpdate = true) // Final update
+                        lastEraserX = -1f
+                        lastEraserY = -1f
                     }
                 }
             }
@@ -474,7 +512,23 @@ class BlurActivity : AppCompatActivity() {
         }
     }
 
-    private fun eraseBlurAtPoint(x: Int, y: Int) {
+    private fun drawSmoothEraserPath(startX: Float, startY: Float, endX: Float, endY: Float) {
+        val distance = Math.hypot((endX - startX).toDouble(), (endY - startY).toDouble()).toFloat()
+        val steps = (distance / 5).toInt() // Reduce number of points to avoid lag
+
+        for (i in 0..steps) {
+            val t = i / steps.toFloat()
+            val x = lerp(startX, endX, t)
+            val y = lerp(startY, endY, t)
+            eraseBlurAtPoint(x.toInt(), y.toInt(), isFinalUpdate = false)
+        }
+
+        // Final update to refresh bitmap after multiple erasures
+        binding.blurImageView.invalidate()
+    }
+
+
+    private fun eraseBlurAtPoint(x: Int, y: Int,isFinalUpdate: Boolean) {
         val radius = 20
 
         val left = (x - radius).coerceAtLeast(0)
@@ -491,8 +545,10 @@ class BlurActivity : AppCompatActivity() {
                 }
             }
         }
-        // Update the ImageView
-        binding.blurImageView.setImageBitmap(mutableBlurredBitmap)
+        // Reduce the number of bitmap updates to improve performance
+        if (isFinalUpdate) {
+            binding.blurImageView.setImageBitmap(mutableBlurredBitmap)
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")

@@ -258,7 +258,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:paddingVertical="5dp"
-                    android:progress="50"
+                    android:progress="20"
                     android:progressDrawable="@drawable/seekbar_line"
                     android:thumb="@drawable/custom_thumb" />
 
@@ -268,7 +268,7 @@
                     android:layout_height="wrap_content"
                     android:layout_margin="8dp"
                     android:fontFamily="@font/poppins_medium"
-                    android:text="50%"
+                    android:text="20%"
                     android:textColor="@color/TopBarText" />
 
             </LinearLayout>

@@ -1,16 +1,19 @@
 package com.example.blureffectproject.view
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
+import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
+import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Region
 import android.graphics.Shader
@@ -74,6 +77,8 @@ class LinerButtonView @JvmOverloads constructor(
     private var translationX = 0f
     private var translationY = 0f
     private var rotationDegrees = 0f
+    var bottomLineOffset = 5f
+    var topLineOffset = 5f
 
     // New logic variables
     private var areLinesVisible = true
@@ -105,11 +110,15 @@ class LinerButtonView @JvmOverloads constructor(
         when (event.actionMasked) {
 
             MotionEvent.ACTION_DOWN -> {
-                isDraggingFrame = true
                 lastTouchX = event.x
                 lastTouchY = event.y
 
-                showLinesImmediately() // Show lines as soon as you touch
+                if (isTouchInsideFrame(event.x, event.y)) {
+                    isDraggingFrame = true
+                } else {
+                    isDraggingFrame = false
+                    showLinesImmediately()
+                }
             }
 
             MotionEvent.ACTION_POINTER_DOWN -> {
@@ -120,12 +129,12 @@ class LinerButtonView @JvmOverloads constructor(
                     lastRotation = rotationDegrees
                     lastDistance = calculateDistance(event)
 
-                    showLinesImmediately() // Show lines as soon as you start rotating
+                    showLinesImmediately()
                 }
             }
 
             MotionEvent.ACTION_MOVE -> {
-                // As long as you're moving, keep showing the lines.
+                // Keep showing lines as long as user is interacting
                 showLinesImmediately()
 
                 if (isDraggingFrame && event.pointerCount == 1) {
@@ -145,8 +154,12 @@ class LinerButtonView @JvmOverloads constructor(
                     val currentDistance = calculateDistance(event)
                     val distanceDelta = currentDistance - lastDistance
 
-                    scaleFactor += distanceDelta / 300f
+                    // Adjust scale factor for pinch in/out
+                    scaleFactor -= distanceDelta / 300f
                     scaleFactor = max(minScale, min(scaleFactor, maxScale))
+
+                    // Move top lines left, bottom lines right when dragging in/out
+                    adjustLinePositions(distanceDelta)
 
                     lastDistance = currentDistance
                     invalidate()
@@ -157,8 +170,7 @@ class LinerButtonView @JvmOverloads constructor(
                 if (event.pointerCount <= 1) {
                     isDraggingFrame = false
                     isRotating = false
-
-                    startHideLinesTimer() // Only start hiding after you lift the fingers
+                    startHideLinesTimer() // Hide lines after some time if no interaction
                 }
             }
         }
@@ -166,6 +178,7 @@ class LinerButtonView @JvmOverloads constructor(
         return true
     }
 
+    @SuppressLint("DrawAllocation")
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
@@ -198,49 +211,114 @@ class LinerButtonView @JvmOverloads constructor(
                 }
                 canvas.drawBitmap(blurred, blurMatrix, blurPaint)
 
-                val clearPath = Path()
-                val infiniteLength = 10000f // Same as the lines
-
-                val rect = RectF(-infiniteLength, topY, infiniteLength, bottomY)
-
+                val infiniteLength = 10000f
                 val matrix = Matrix().apply {
                     postTranslate(translationX, translationY)
                     postRotate(rotationDegrees, centerX + translationX, centerY + translationY)
                 }
 
-                clearPath.addRect(rect, Path.Direction.CW)
-                clearPath.transform(matrix)
+                // 1️⃣ Apply blur effect outside of dotted lines
+                val outerBlurPath = Path().apply {
+                    addRect(RectF(-infiniteLength, secondTopY, infiniteLength, secondBottomY), Path.Direction.CW)
+                    transform(matrix)
+                }
+                blurPaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+                canvas.drawPath(outerBlurPath, blurPaint)
+                blurPaint.xfermode = null
 
+                // 2️⃣ Apply shade effect between dotted and solid lines with transformation
+                val topShadePath = Path().apply {
+                    addRect(RectF(-infiniteLength, secondTopY, infiniteLength, topY), Path.Direction.CW)
+                    transform(matrix)
+                }
+
+                val bottomShadePath = Path().apply {
+                    addRect(RectF(-infiniteLength, bottomY, infiniteLength, secondBottomY), Path.Direction.CW)
+                    transform(matrix)
+                }
+
+                val shaderMatrix = Matrix().apply {
+                    postTranslate(translationX, translationY)
+                    postRotate(rotationDegrees, centerX + translationX, centerY + translationY)
+                }
+
+                // Top Shade Paint (Fade Downwards)
+                val topShadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    shader = LinearGradient(
+                        0f, secondTopY, 0f, topY,
+                        Color.BLACK, Color.TRANSPARENT, // Dark to transparent
+                        Shader.TileMode.CLAMP
+                    ).apply {
+                        setLocalMatrix(shaderMatrix) // Apply transformations
+                    }
+                    xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+                }
+                canvas.drawPath(topShadePath, topShadePaint)
+
+                // Bottom Shade Paint (Fade Upwards)
+                val bottomShadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    shader = LinearGradient(
+                        0f, bottomY, 0f, secondBottomY,
+                        Color.TRANSPARENT, Color.BLACK, // Transparent to dark
+                        Shader.TileMode.CLAMP
+                    ).apply {
+                        setLocalMatrix(shaderMatrix) // Apply transformations
+                    }
+                    xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+                }
+                canvas.drawPath(bottomShadePath, bottomShadePaint)
+
+                // 3️⃣ Clear blur effect inside solid lines
+                val clearPath = Path().apply {
+                    addRect(RectF(-infiniteLength, topY, infiniteLength, bottomY), Path.Direction.CW)
+                    transform(matrix)
+                }
                 blurPaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
-
-                canvas.save()
-                canvas.clipPath(clearPath, Region.Op.INTERSECT)
-                canvas.drawPaint(blurPaint)
-                canvas.restore()
-
+                canvas.drawPath(clearPath, blurPaint)
                 blurPaint.xfermode = null
 
                 canvas.restoreToCount(saveLayer)
 
+                // 4️⃣ Draw the lines
                 if (areLinesVisible) {
                     canvas.save()
-
                     canvas.translate(translationX, translationY)
                     canvas.rotate(rotationDegrees, centerX, centerY)
 
-                    val infiniteLength = 10000f
+                    canvas.drawLine(-infiniteLength + topLineOffset, topY, infiniteLength + topLineOffset, topY, solidLinePaint)
+                    canvas.drawLine(-infiniteLength + topLineOffset, secondTopY, infiniteLength + topLineOffset, secondTopY, dottedLinePaint)
 
-                    canvas.drawLine(-infiniteLength, topY, infiniteLength, topY, solidLinePaint)
-                    canvas.drawLine(-infiniteLength, bottomY, infiniteLength, bottomY, solidLinePaint)
-
-                    canvas.drawLine(-infiniteLength, secondTopY, infiniteLength, secondTopY, dottedLinePaint)
-                    canvas.drawLine(-infiniteLength, secondBottomY, infiniteLength, secondBottomY, dottedLinePaint)
+                    canvas.drawLine(-infiniteLength + bottomLineOffset, bottomY, infiniteLength + bottomLineOffset, bottomY, solidLinePaint)
+                    canvas.drawLine(-infiniteLength + bottomLineOffset, secondBottomY, infiniteLength + bottomLineOffset, secondBottomY, dottedLinePaint)
 
                     canvas.restore()
                 }
             }
         }
     }
+
+    private fun isTouchInsideFrame(touchX: Float, touchY: Float): Boolean {
+        val centerX = width / 2f + translationX
+        val centerY = height / 2f + translationY
+
+        val halfGap = 200f / scaleFactor
+        val extraGap = 80f
+
+        val topY = centerY - halfGap
+        val bottomY = centerY + halfGap
+
+        val secondTopY = topY - extraGap
+        val secondBottomY = bottomY + extraGap
+
+        return touchY in secondTopY..secondBottomY
+    }
+
+    private fun adjustLinePositions(distanceDelta: Float) {
+        val movementFactor = distanceDelta / 10 // Adjust sensitivity
+        topLineOffset -= movementFactor // Move top lines left
+        bottomLineOffset += movementFactor // Move bottom lines right
+    }
+
 
     private fun showLinesImmediately() {
         areLinesVisible = true
@@ -253,7 +331,6 @@ class LinerButtonView @JvmOverloads constructor(
         handler.removeCallbacks(hideLinesRunnable)
         handler.postDelayed(hideLinesRunnable, 2000)
     }
-
     private fun calculateAngle(event: MotionEvent): Float {
         return if (event.pointerCount >= 2) {
             val dx = event.getX(1) - event.getX(0)

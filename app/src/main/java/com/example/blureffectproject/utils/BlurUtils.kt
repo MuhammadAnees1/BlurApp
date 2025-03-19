@@ -1,15 +1,9 @@
 package com.example.blureffectproject.utils
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Matrix
-import android.graphics.Paint
+import android.graphics.*
 import android.os.Build
-import android.renderscript.Allocation
-import android.renderscript.Element
-import android.renderscript.RenderScript
-import android.renderscript.ScriptIntrinsicBlur
+import android.renderscript.*
 import androidx.annotation.RequiresApi
 import androidx.core.graphics.createBitmap
 
@@ -38,102 +32,120 @@ object BlurUtils {
     }
 
     @RequiresApi(Build.VERSION_CODES.S)
-    fun applyRadialZoomBlur(context: Context, bitmap: Bitmap, centerX: Float, centerY: Float, blurAmount: Float, blurPasses: Int): Bitmap {
+    fun applyRadialBlur(context: Context, bitmap: Bitmap, centerX: Float, centerY: Float, blurAmount: Float, blurPasses: Int): Bitmap {
         val width = bitmap.width
         val height = bitmap.height
 
         val outputBitmap = Bitmap.createBitmap(width, height, bitmap.config ?: Bitmap.Config.ARGB_8888)
         val canvas = Canvas(outputBitmap)
-
-        // Draw the original bitmap first
-        canvas.drawBitmap(bitmap, 0f, 0f, null)
-
         val paint = Paint().apply {
             isAntiAlias = true
         }
 
-        // Loop to create radial zoom blur with additional linear blur applied
         for (i in 1..blurPasses) {
-            val scale = 1f + i * blurAmount
-            val alpha = (255 / (i + 1)).coerceIn(0, 255)
+            val scale = 1f + (i * blurAmount * 0.25f)  // More controlled scaling
+            val alpha = ((255 * (1 - (i.toFloat() / blurPasses))) * 0.8).toInt().coerceIn(0, 255) // Smooth fade effect
 
             val matrix = Matrix().apply {
                 postScale(scale, scale, centerX, centerY)
             }
 
-            // Scale the bitmap
             val scaledBitmap = Bitmap.createBitmap(bitmap, 0, 0, width, height, matrix, true)
 
-            // Apply linear blur to the scaled bitmap
-            val blurredScaledBitmap = applyLinearBlur(context, scaledBitmap)
+            // Apply Gaussian Blur instead of simple linear blur
+            val blurredBitmap = applyGaussianBlur(context, scaledBitmap, 15f)
 
-            val dx = (width - blurredScaledBitmap.width) / 2f
-            val dy = (height - blurredScaledBitmap.height) / 2f
+            val dx = (width - blurredBitmap.width) / 2f
+            val dy = (height - blurredBitmap.height) / 2f
 
             paint.alpha = alpha
-            canvas.drawBitmap(blurredScaledBitmap, dx, dy, paint)
+            canvas.drawBitmap(blurredBitmap, dx, dy, paint)
 
-            // Recycle temporary bitmaps
+            // Properly recycle bitmaps to free memory
             scaledBitmap.recycle()
-            blurredScaledBitmap.recycle()
+            blurredBitmap.recycle()
         }
 
         return outputBitmap
     }
 
-    fun applyMotionBlur(bitmap: Bitmap, blurPasses: Int, angleInDegrees: Float, distancePerPass: Float): Bitmap {
+    fun applyMotionBlur(context: Context, bitmap: Bitmap, blurPasses: Int, angleInDegrees: Float, distancePerPass: Float): Bitmap {
         val radians = Math.toRadians(angleInDegrees.toDouble())
         val offsetX = (Math.cos(radians) * distancePerPass).toFloat()
         val offsetY = (Math.sin(radians) * distancePerPass).toFloat()
 
-        val outputBitmap =
-            createBitmap(bitmap.width, bitmap.height, bitmap.config ?: Bitmap.Config.ARGB_8888)
+        val width = bitmap.width
+        val height = bitmap.height
+        val outputBitmap = Bitmap.createBitmap(width, height, bitmap.config ?: Bitmap.Config.ARGB_8888)
         val canvas = Canvas(outputBitmap)
         val paint = Paint().apply {
             isAntiAlias = true
-            alpha = (255 / blurPasses)
         }
 
-        for (i in 0 until blurPasses) {
+
+        for (i in 1..blurPasses) {
+            val alpha = ((255 / blurPasses.toFloat()) * 0.8).toInt().coerceIn(0, 255)  // Smooth fading
+            paint.alpha = alpha
+
             val dx = offsetX * i
             val dy = offsetY * i
-            canvas.drawBitmap(bitmap, dx, dy, paint)
+
+            // Scale factor to simulate depth effect
+            val scaleFactor = 1f + (i * 0.01f)
+
+            val matrix = Matrix().apply {
+                postScale(scaleFactor, scaleFactor, width / 2f, height / 2f)
+            }
+
+            val blurredBitmap = applyLinearBlur(context, Bitmap.createBitmap(bitmap, 0, 0, width, height, matrix, true))
+
+            canvas.drawBitmap(blurredBitmap, dx, dy, paint)
+            blurredBitmap.recycle()
         }
 
         return outputBitmap
     }
 
-    fun createZoomBlur(bitmap: Bitmap, centerX: Float, centerY: Float, zoomAmount: Float, blurPasses: Int): Bitmap {
+    fun createZoomBlur(context: Context, bitmap: Bitmap, centerX: Float, centerY: Float, zoomAmount: Float, blurPasses: Int): Bitmap {
         if (bitmap.isRecycled) {
             throw IllegalArgumentException("Original bitmap is already recycled!")
         }
 
-        val outputBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, bitmap.config ?: Bitmap.Config.ARGB_8888)
+        val width = bitmap.width
+        val height = bitmap.height
+        val outputBitmap = Bitmap.createBitmap(width, height, bitmap.config ?: Bitmap.Config.ARGB_8888)
         val canvas = Canvas(outputBitmap)
         val paint = Paint().apply {
             isAntiAlias = true
-            alpha = (255 / blurPasses)
         }
 
-        for (i in 0 until blurPasses) {
+        // Draw original image first
+//        canvas.drawBitmap(bitmap, 0f, 0f, null)
+
+        for (i in 1..blurPasses) {
+            val alpha = ((255 / blurPasses.toFloat()) * 0.8).toInt().coerceIn(0, 255)  // Smooth fade
+            paint.alpha = alpha
+
             val scale = 1f + zoomAmount * (i.toFloat() / blurPasses)
+
             val matrix = Matrix().apply {
                 postScale(scale, scale, centerX, centerY)
             }
 
-            val scaledBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            val scaledBitmap = Bitmap.createBitmap(bitmap, 0, 0, width, height, matrix, true)
 
-            val dx = (bitmap.width - scaledBitmap.width) / 2f
-            val dy = (bitmap.height - scaledBitmap.height) / 2f
+            val dx = (width - scaledBitmap.width) / 2f
+            val dy = (height - scaledBitmap.height) / 2f
 
-            canvas.drawBitmap(scaledBitmap, dx, dy, paint)
+            // Apply extra blur (optional, replace `applyLinearBlur` with your implementation)
+            val blurredBitmap = applyLinearBlur(context, scaledBitmap)
 
-            // Only recycle if it's not the same as the original
-            if (scaledBitmap != bitmap && !scaledBitmap.isRecycled) {
-                scaledBitmap.recycle()
-            }
+            canvas.drawBitmap(blurredBitmap, dx, dy, paint)
+
+            // Clean up bitmaps to avoid memory leaks
+            scaledBitmap.recycle()
+            blurredBitmap.recycle()
         }
-
         return outputBitmap
     }
 
@@ -157,5 +169,21 @@ object BlurUtils {
         return outputBitmap
     }
 
+    fun applyGaussianBlur(context: Context, bitmap: Bitmap, radius: Float): Bitmap {
+        val rs = RenderScript.create(context)
 
+        val input = Allocation.createFromBitmap(rs, bitmap)
+        val output = Allocation.createTyped(rs, input.type)
+        val script = ScriptIntrinsicBlur.create(rs, Element.U8_4(rs))
+
+        script.setRadius(radius) // Stronger blur for a smoother effect
+        script.setInput(input)
+        script.forEach(output)
+
+        val outputBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, bitmap.config ?: Bitmap.Config.ARGB_8888)
+        output.copyTo(outputBitmap)
+
+        rs.destroy()
+        return outputBitmap
+    }
 }
