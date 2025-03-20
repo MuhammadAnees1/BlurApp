@@ -26,10 +26,7 @@ import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 
-class LinerButtonView @JvmOverloads constructor(
-    context: Context,
-    attrs: AttributeSet? = null
-) : View(context, attrs) {
+class LinerButtonView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
     // Paints
     private val solidLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -78,6 +75,7 @@ class LinerButtonView @JvmOverloads constructor(
         areLinesVisible = false
         invalidate()
     }
+    var isBlurBetweenSolidLinesEnabled: Boolean = true
 
     init {
         // Start hiding lines after 2 seconds initially
@@ -199,31 +197,80 @@ class LinerButtonView @JvmOverloads constructor(
                 }
                 canvas.drawBitmap(original, originalMatrix, null)
 
-                val saveLayer = canvas.saveLayer(0f, 0f, viewWidth, viewHeight, null)
-
-                // Draw blurred bitmap scaled and centered
-                val blurMatrix = Matrix().apply {
-                    setScale(scale, scale)
-                    postTranslate(dx, dy)
-                }
-                canvas.drawBitmap(blurred, blurMatrix, blurPaint)
-
                 val infiniteLength = 10000f
+
                 val matrix = Matrix().apply {
                     postTranslate(translationX, translationY)
                     postRotate(rotationDegrees, centerX + translationX, centerY + translationY)
                 }
 
-                // 1️⃣ Apply blur effect outside of dotted lines
-                val outerBlurPath = Path().apply {
-                    addRect(RectF(-infiniteLength, secondTopY, infiniteLength, secondBottomY), Path.Direction.CW)
-                    transform(matrix)
-                }
-                blurPaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
-                canvas.drawPath(outerBlurPath, blurPaint)
-                blurPaint.xfermode = null
+                if (isBlurBetweenSolidLinesEnabled) {
+                    // ✅ Only blur between the solid lines
 
-                // 2️⃣ Apply shade effect between dotted and solid lines with transformation
+                    // Create a clipping path between solid lines
+                    val insideBlurPath = Path().apply {
+                        addRect(RectF(-infiniteLength, topY, infiniteLength, bottomY), Path.Direction.CW)
+                        transform(matrix)
+                    }
+
+                    // Save canvas state
+                    canvas.save()
+
+                    // Clip to insideBlurPath: only this region will get blur
+                    canvas.clipPath(insideBlurPath)
+
+                    // Draw the blurred bitmap (only in clipped region)
+                    val blurMatrix = Matrix().apply {
+                        setScale(scale, scale)
+                        postTranslate(dx, dy)
+                    }
+                    canvas.drawBitmap(blurred, blurMatrix, blurPaint)
+
+                    // Restore canvas (remove clipping)
+                    canvas.restore()
+
+                } else {
+                    // ✅ Blur outside dotted lines and clear inside solid lines
+
+                    // Draw the blurred bitmap over the entire area
+                    val blurMatrix = Matrix().apply {
+                        setScale(scale, scale)
+                        postTranslate(dx, dy)
+                    }
+
+                    val saveLayer = canvas.saveLayer(0f, 0f, viewWidth, viewHeight, null)
+                    canvas.drawBitmap(blurred, blurMatrix, blurPaint)
+
+                    // Define the outer blur area (between dotted lines)
+                    val outerBlurPath = Path().apply {
+                        addRect(RectF(-infiniteLength, secondTopY, infiniteLength, secondBottomY), Path.Direction.CW)
+                        transform(matrix)
+                    }
+
+                    // Mask out only the outer blur area
+                    blurPaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+                    canvas.drawPath(outerBlurPath, blurPaint)
+                    blurPaint.xfermode = null
+
+                    // Clear the blur between the solid lines (keep the original sharp)
+                    val clearPath = Path().apply {
+                        addRect(RectF(-infiniteLength, topY, infiniteLength, bottomY), Path.Direction.CW)
+                        transform(matrix)
+                    }
+
+                    blurPaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+                    canvas.drawPath(clearPath, blurPaint)
+                    blurPaint.xfermode = null
+
+                    canvas.restoreToCount(saveLayer)
+                }
+
+                // Define common variables first
+                val shaderMatrix = Matrix().apply {
+                    postTranslate(translationX, translationY)
+                    postRotate(rotationDegrees, centerX + translationX, centerY + translationY)
+                }
+
                 val topShadePath = Path().apply {
                     addRect(RectF(-infiniteLength, secondTopY, infiniteLength, topY), Path.Direction.CW)
                     transform(matrix)
@@ -234,58 +281,78 @@ class LinerButtonView @JvmOverloads constructor(
                     transform(matrix)
                 }
 
-                val shaderMatrix = Matrix().apply {
-                    postTranslate(translationX, translationY)
-                    postRotate(rotationDegrees, centerX + translationX, centerY + translationY)
-                }
+                if (isBlurBetweenSolidLinesEnabled) {
+                    // ✅ Blur is inside, fade from bottom -> top
 
-                // Top Shade Paint (Fade Downwards)
-                val topShadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    shader = LinearGradient(
-                        0f, secondTopY, 0f, topY,
-                        Color.BLACK, Color.TRANSPARENT,
-                        Shader.TileMode.CLAMP
-                    ).apply {
-                        setLocalMatrix(shaderMatrix)
+                    // Top Shade Paint (Fade Downwards)
+                    val topShadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        shader = LinearGradient(
+                            0f, topY - 50f, 0f, topY + 50f,
+                            Color.WHITE, Color.LTGRAY,
+                            Shader.TileMode.CLAMP
+                        ).apply {
+                            setLocalMatrix(shaderMatrix)
+                        }
+                        // You can skip xfermode or use SRC_OVER if you prefer
+                        xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
                     }
-                    xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
-                }
-                canvas.drawPath(topShadePath, topShadePaint)
+                    canvas.drawPath(topShadePath, topShadePaint)
 
-                // Bottom Shade Paint (Fade Upwards)
-                val bottomShadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    shader = LinearGradient(
-                        0f, bottomY, 0f, secondBottomY,
-                        Color.TRANSPARENT, Color.BLACK,
-                        Shader.TileMode.CLAMP
-                    ).apply {
-                        setLocalMatrix(shaderMatrix)
+                    // Bottom Shade Paint (Fade Upwards)
+                    val bottomShadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        shader = LinearGradient(
+                            0f, bottomY, 0f, secondBottomY,
+                            Color.LTGRAY, Color.WHITE,
+                            Shader.TileMode.CLAMP
+                        ).apply {
+                            setLocalMatrix(shaderMatrix)
+                        }
+                        xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
                     }
-                    xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+                    canvas.drawPath(bottomShadePath, bottomShadePaint)
                 }
-                canvas.drawPath(bottomShadePath, bottomShadePaint)
+                else {
+                    // ✅ Blur is outside, fade from top -> bottom
 
-                // 3️⃣ Clear blur effect inside solid lines
-                val clearPath = Path().apply {
-                    addRect(RectF(-infiniteLength, topY, infiniteLength, bottomY), Path.Direction.CW)
-                    transform(matrix)
+                    // Top Shade Paint (Fade Downwards)
+                    val topShadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        shader = LinearGradient(
+                            0f, secondTopY, 0f, topY,
+                            Color.LTGRAY, Color.WHITE,
+                            Shader.TileMode.CLAMP
+                        ).apply {
+                            setLocalMatrix(shaderMatrix)
+                        }
+                        xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+                    }
+                    canvas.drawPath(topShadePath, topShadePaint)
+
+                    // Bottom Shade Paint (Fade Upwards)
+                    val bottomShadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        shader = LinearGradient(
+                            0f, bottomY, 0f, secondBottomY,
+                            Color.WHITE, Color.LTGRAY,
+                            Shader.TileMode.CLAMP
+                        ).apply {
+                            setLocalMatrix(shaderMatrix)
+                        }
+                        xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+                    }
+                    canvas.drawPath(bottomShadePath, bottomShadePaint)
                 }
-                blurPaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
-                canvas.drawPath(clearPath, blurPaint)
-                blurPaint.xfermode = null
 
-                canvas.restoreToCount(saveLayer)
-
-                // 4️⃣ Draw the lines
+                // 4️⃣ Draw solid and dotted lines if visible
                 if (areLinesVisible) {
                     canvas.save()
                     canvas.translate(translationX, translationY)
                     canvas.rotate(rotationDegrees, centerX, centerY)
 
+                    // Solid lines
                     canvas.drawLine(-infiniteLength + topLineOffset, topY, infiniteLength + topLineOffset, topY, solidLinePaint)
-                    canvas.drawLine(-infiniteLength + topLineOffset, secondTopY, infiniteLength + topLineOffset, secondTopY, dottedLinePaint)
-
                     canvas.drawLine(-infiniteLength + bottomLineOffset, bottomY, infiniteLength + bottomLineOffset, bottomY, solidLinePaint)
+
+                    // Dotted lines
+                    canvas.drawLine(-infiniteLength + topLineOffset, secondTopY, infiniteLength + topLineOffset, secondTopY, dottedLinePaint)
                     canvas.drawLine(-infiniteLength + bottomLineOffset, secondBottomY, infiniteLength + bottomLineOffset, secondBottomY, dottedLinePaint)
 
                     canvas.restore()
@@ -316,7 +383,6 @@ class LinerButtonView @JvmOverloads constructor(
         bottomLineOffset += movementFactor // Move bottom lines right
     }
 
-
     private fun showLinesImmediately() {
         areLinesVisible = true
         invalidate()
@@ -343,4 +409,10 @@ class LinerButtonView @JvmOverloads constructor(
             hypot(dx, dy)
         } else 0f
     }
+
+    fun setBlurBetweenSolidLines(enabled: Boolean) {
+        isBlurBetweenSolidLinesEnabled = enabled
+        invalidate()
+    }
+
 }
